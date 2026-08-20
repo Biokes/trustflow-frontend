@@ -1,0 +1,10 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`/api/usdc-price should return mock USDC price on GET request 1`] = `
+{
+  "currency": "USD",
+  "price": Any<Number>,
+  "source": "mock",
+  "timestamp": Any<Number>,
+}
+`;

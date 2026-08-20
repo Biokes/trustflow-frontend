@@ -1,0 +1,42 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`/api/profile should return mock profile if PROFILE_API_BASE_URL is not set 1`] = `
+{
+  "bio": "Product-focused freelancer helping teams ship reliable web3 experiences with clear delivery milestones.",
+  "displayName": "Freelancer",
+  "pastGigs": [
+    {
+      "client": "Nova Labs",
+      "completedAt": "2026-05-17T09:30:00.000Z",
+      "id": "gig-001",
+      "payoutUSDC": 1200,
+      "rating": 5,
+      "title": "Smart Contract Integration for Milestone Escrow",
+    },
+    {
+      "client": "Acme Studio",
+      "completedAt": "2026-04-06T14:20:00.000Z",
+      "id": "gig-002",
+      "payoutUSDC": 850,
+      "rating": 4.6,
+      "title": "Responsive Dashboard UI Refactor",
+    },
+    {
+      "client": "Orbit Works",
+      "completedAt": "2026-02-26T11:10:00.000Z",
+      "id": "gig-003",
+      "payoutUSDC": 640,
+      "rating": 4.9,
+      "title": "Dispute Evidence Upload Flow",
+    },
+  ],
+  "reputation": {
+    "averageRating": 4.8,
+    "completionRate": 100,
+    "score": 92,
+    "totalGigs": 5,
+  },
+  "source": "mock",
+  "walletAddress": "G123",
+}
+`;
