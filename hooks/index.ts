@@ -4,6 +4,7 @@ export * from "./useEscrowContract";
 export * from "./useDisputeContract";
 export * from "./useGigsExplorer";
 export * from "./useWallet";
+export * from "./useWalletSync";
 export * from "./useIsMounted";
 export * from "./useSubscription";
 export * from "./useContractEvents";

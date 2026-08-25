@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { useTranslations } from 'next-intl';
@@ -30,6 +30,23 @@ export function Navbar() {
     disconnect,
   } = useWallet();
 
+  // Track the previous address so WalletButton can show a switch notice
+  // when another tab changes the active Freighter account.
+  const prevAddressRef = useRef<string | null>(null);
+  const [switchedFromAddress, setSwitchedFromAddress] = useState<string | null>(null);
+
+  useEffect(() => {
+    const current = account?.address ?? null;
+    const previous = prevAddressRef.current;
+
+    if (previous && current && previous !== current) {
+      // The account address changed — record the previous one for the notice
+      setSwitchedFromAddress(previous);
+    }
+
+    prevAddressRef.current = current;
+  }, [account?.address]);
+
   const handleConnect = useCallback(() => {
     connect();
   }, [connect]);
@@ -48,19 +65,16 @@ export function Navbar() {
       onDisconnect={handleDisconnect}
       switchAccountLabel={tw('switchAccount')}
       disconnectLabel={tw('disconnect')}
+      syncedAcrossTabs
+      previousAddress={switchedFromAddress}
+      onDismissSwitchNotice={() => setSwitchedFromAddress(null)}
     />
   ) : (
-    <div className="flex flex-col items-center gap-1">
-      <ConnectButton
-        label={t('connectWallet')}
-        onConnect={handleConnect}
-      />
-      {isBusy && !walletError && (
-        <span className="text-xs text-gray-400 dark:text-gray-500">
-          {tw('connecting')}
-        </span>
-      )}
-    </div>
+    <ConnectButton
+      label={t('connectWallet')}
+      onConnect={handleConnect}
+      isConnecting={isBusy && !walletError}
+    />
   );
 
   return (

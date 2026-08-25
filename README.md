@@ -185,6 +185,34 @@ Full page sections wired to on-chain data.
 - The profile page fetches reputation, bio, and past gigs from `GET /api/profile`, which proxies to `PROFILE_API_BASE_URL` when configured and falls back to typed mock data for local/dev environments.
 - No new runtime dependencies were added for this feature.
 
+### Cross-Tab Wallet Session Sync & Auto-Reconnect
+
+Wallet state (account, network, allowed status) is synchronized across all open browser tabs without requiring user interaction.
+
+**How it works:**
+
+1. When `useWallet` detects a state change during its 2-second polling cycle (account switch, network change), it broadcasts the new state to all other tabs via `BroadcastChannel`.
+2. Each tab receiving the message compares the incoming version number against its own. Higher version wins; ties are broken by timestamp. Stale or equal state is silently discarded.
+3. When a tab receives a newer state, it applies it immediately and fires a silent Freighter validation call to confirm the account is still accessible.
+4. Disconnect is always broadcast immediately (not debounced) so all tabs clear their state at once.
+5. On mount, each tab reads the last persisted state from `localStorage` and restores it before the first poll completes, eliminating the blank-wallet flash on page load.
+
+**Key files:**
+
+| File | Role |
+|------|------|
+| `types/wallet-sync.ts` | Shared TypeScript interfaces (`WalletSyncState`, `WalletSyncMessage`, etc.) |
+| `utils/walletStorage.ts` | localStorage read/write/clear with quota-exceeded handling and version counter |
+| `utils/walletSyncManager.ts` | `WalletSyncManager` class — owns the `BroadcastChannel`, debounce logic, listener registry, and localStorage fallback |
+| `hooks/useWalletSync.ts` | React wrapper around `WalletSyncManager`; manages subscription lifecycle |
+| `hooks/useWallet.ts` | Integrates sync into the existing polling hook via a stable `broadcastStateRef` |
+
+**Fallback strategy:**
+
+`BroadcastChannel` is used where available (all modern browsers). In environments where it is unavailable or throws, the manager falls back to `localStorage` + `storage` events, which fire across tabs when a key changes.
+
+**No new runtime dependencies.** Everything uses native Web APIs (`BroadcastChannel`, `localStorage`, `crypto.randomUUID`).
+
 ### Contract Bindings Codegen
 
 TrustFlow uses a codegen pipeline to generate fully typed TypeScript client bindings from Soroban contract specs. This ensures all frontend contract calls are compile-time checked and stay in sync with the contract interface.
