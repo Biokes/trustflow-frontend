@@ -75,14 +75,11 @@ export class WalletSyncManager {
         this.channel.onmessage = (event) => {
           this.handleMessage(event.data)
         }
-        console.log('[WalletSyncManager] BroadcastChannel initialized')
-      } catch (error) {
-        console.warn('[WalletSyncManager] BroadcastChannel failed, using localStorage fallback:', error)
+      } catch {
         this.setupStorageFallback()
       }
     } else {
       // Fallback to localStorage events
-      console.log('[WalletSyncManager] BroadcastChannel not supported, using localStorage fallback')
       this.setupStorageFallback()
     }
 

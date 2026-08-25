@@ -54,15 +54,13 @@ export function readWalletState(): WalletSyncState | null {
       typeof parsed.tabId !== 'string' ||
       typeof parsed.version !== 'number'
     ) {
-      console.warn('[walletStorage] Invalid state structure, clearing...')
       clearWalletState()
       return null
     }
 
     return parsed
-  } catch (error) {
-    console.error('[walletStorage] Failed to read wallet state:', error)
-    // Clear corrupt data
+  } catch {
+    // Clear corrupt data silently
     clearWalletState()
     return null
   }
@@ -85,19 +83,15 @@ export function writeWalletState(state: WalletSyncState): boolean {
     return true
   } catch (error) {
     if (error instanceof Error && error.name === 'QuotaExceededError') {
-      console.error('[walletStorage] Storage quota exceeded, clearing old data...')
       // Try to clear and retry once
       clearWalletState()
       try {
-        const serialized = JSON.stringify(state)
-        localStorage.setItem(WALLET_STATE_KEY, serialized)
+        localStorage.setItem(WALLET_STATE_KEY, JSON.stringify(state))
         return true
       } catch {
-        console.error('[walletStorage] Failed to write after clearing')
         return false
       }
     }
-    console.error('[walletStorage] Failed to write wallet state:', error)
     return false
   }
 }
@@ -114,8 +108,8 @@ export function clearWalletState(): void {
   try {
     localStorage.removeItem(WALLET_STATE_KEY)
     localStorage.removeItem(WALLET_VERSION_KEY)
-  } catch (error) {
-    console.error('[walletStorage] Failed to clear wallet state:', error)
+  } catch {
+    // Nothing to do if removal fails
   }
 }
 
@@ -127,7 +121,6 @@ export function clearWalletState(): void {
  */
 export function getNextVersion(): number {
   if (!isStorageAvailable()) {
-    // Fallback to timestamp-based versioning
     return Date.now()
   }
 
@@ -136,9 +129,7 @@ export function getNextVersion(): number {
     const nextVersion = current ? parseInt(current, 10) + 1 : 1
     localStorage.setItem(WALLET_VERSION_KEY, nextVersion.toString())
     return nextVersion
-  } catch (error) {
-    console.error('[walletStorage] Failed to get next version:', error)
-    // Fallback to timestamp
+  } catch {
     return Date.now()
   }
 }
@@ -171,11 +162,8 @@ export function isStateNewer(
   stateA: WalletSyncState,
   stateB: WalletSyncState
 ): boolean {
-  // Higher version wins
   if (stateA.version !== stateB.version) {
     return stateA.version > stateB.version
   }
-
-  // If versions are equal, use timestamp as tiebreaker
   return stateA.timestamp > stateB.timestamp
 }

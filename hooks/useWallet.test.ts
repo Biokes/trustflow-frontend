@@ -1,4 +1,4 @@
-import { renderHook, act, waitFor } from '@testing-library/react';
+import { renderHook, act } from '@testing-library/react';
 import { useWallet } from './useWallet';
 // @ts-ignore
 import * as FreighterApiMock from '@stellar/freighter-api';
@@ -16,8 +16,6 @@ jest.mock('@stellar/freighter-api');
 
 // ── useWalletSync mock ─────────────────────────────────────────
 
-// Capture the callbacks registered by useWallet so tests can invoke them
-// directly to simulate cross-tab messages.
 let capturedOnStateReceived: ((state: WalletSyncState) => void) | undefined;
 let capturedOnDisconnectReceived: (() => void) | undefined;
 
@@ -42,6 +40,21 @@ jest.mock('./useWalletSync', () => ({
   },
 }));
 
+// ── Helpers ────────────────────────────────────────────────────
+
+/**
+ * Advance fake timers by 2 s and flush all resulting async work.
+ * jest.runAllTimersAsync() ticks timers AND awaits any promises they produce,
+ * which is required because useWallet's setInterval callback is async.
+ */
+async function tickPolling() {
+  await act(async () => {
+    await jest.runAllTimersAsync();
+  });
+}
+
+// ── Suite ──────────────────────────────────────────────────────
+
 describe('useWallet', () => {
   beforeEach(() => {
     resetFreighterMocks();
@@ -54,18 +67,15 @@ describe('useWallet', () => {
   });
 
   afterEach(() => {
-    jest.clearAllTimers();
+    // Restore real timers BEFORE clearing so there is no window where
+    // fake timers are live but the Jest environment is already torn down.
     jest.useRealTimers();
   });
 
   it('should initialize with null state if disconnected', async () => {
     const { result } = renderHook(() => useWallet());
-    await act(async () => { await Promise.resolve(); });
-    
-    // Fast forward for initial sync
-    await act(async () => {
-      jest.advanceTimersByTime(2000);
-    });
+
+    await tickPolling();
 
     expect(result.current.account).toBeNull();
     expect(result.current.network).toBeNull();
@@ -83,25 +93,20 @@ describe('useWallet', () => {
     });
 
     const { result } = renderHook(() => useWallet());
-    await act(async () => { await Promise.resolve(); });
 
-    await act(async () => {
-      jest.advanceTimersByTime(2000);
-    });
+    await tickPolling();
 
     expect(result.current.account).toEqual({
       address: 'GABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890',
       displayName: 'GABC...7890',
     });
-
     expect(result.current.isAllowed).toBe(true);
     expect(result.current.network?.network).toBe('Test SDF Network ; September 2015');
   });
 
   it('should handle connect action', async () => {
     const { result } = renderHook(() => useWallet());
-    await act(async () => { await Promise.resolve(); });
-    
+
     setMockConnected(true);
     setMockAllowed(true);
     setMockPublicKey('GABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890');
@@ -119,24 +124,17 @@ describe('useWallet', () => {
     setMockPublicKey('GABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890');
 
     const { result } = renderHook(() => useWallet());
-    await act(async () => { await Promise.resolve(); });
 
-    await act(async () => {
-      jest.advanceTimersByTime(2000);
-    });
+    await tickPolling();
 
     expect(result.current.account?.address).toBe('GABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890');
 
-    act(() => {
-      result.current.disconnect();
-    });
+    act(() => { result.current.disconnect(); });
 
     expect(result.current.account).toBeNull();
 
-    // Polling shouldn't reconnect if manually disconnected
-    await act(async () => {
-      jest.advanceTimersByTime(2000);
-    });
+    // Polling should not reconnect after an explicit disconnect
+    await tickPolling();
 
     expect(result.current.account).toBeNull();
   });
@@ -146,20 +144,13 @@ describe('useWallet', () => {
     setMockPublicKey('G111');
 
     const { result } = renderHook(() => useWallet());
-    await act(async () => { await Promise.resolve(); });
 
-    await act(async () => {
-      jest.advanceTimersByTime(2000);
-    });
-
+    await tickPolling();
     expect(result.current.account?.address).toBe('G111');
 
     setMockPublicKey('G222');
 
-    await act(async () => {
-      jest.advanceTimersByTime(2000);
-    });
-
+    await tickPolling();
     expect(result.current.account?.address).toBe('G222');
   });
 
@@ -168,25 +159,20 @@ describe('useWallet', () => {
     setMockPublicKey('G111');
 
     const { result } = renderHook(() => useWallet());
-    await act(async () => { await Promise.resolve(); });
 
-    await act(async () => {
-      jest.advanceTimersByTime(2000);
-    });
-
+    await tickPolling();
     expect(result.current.account?.address).toBe('G111');
 
-    let signed: string;
+    let signed!: string;
     await act(async () => {
       signed = await result.current.signTransaction('unsigned-xdr');
     });
 
-    expect(signed!).toBe('unsigned-xdr-signed-by-G111');
+    expect(signed).toBe('unsigned-xdr-signed-by-G111');
   });
 
   it('should throw when signing transaction without an account', async () => {
     const { result } = renderHook(() => useWallet());
-    await act(async () => { await Promise.resolve(); });
 
     await expect(result.current.signTransaction('unsigned-xdr')).rejects.toThrow(
       'Connect a wallet before signing a transaction'
@@ -206,15 +192,13 @@ describe('useWallet', () => {
         version:   10,
       };
       mockLoadPersistedState.mockReturnValue(persisted);
-
-      // Also tell Freighter that this account is still connected
       setMockConnected(true);
       setMockPublicKey('GPERSISTED');
 
       const { result } = renderHook(() => useWallet());
 
-      // After mount effect runs, persisted state should be applied
-      await act(async () => { await Promise.resolve(); });
+      // Mount effect fires synchronously; flush the resulting async sync()
+      await tickPolling();
 
       expect(result.current.account?.address).toBe('GPERSISTED');
       expect(result.current.network?.networkPassphrase).toBe('Test SDF Network ; September 2015');
@@ -225,19 +209,16 @@ describe('useWallet', () => {
       setMockPublicKey('G111');
 
       const { result } = renderHook(() => useWallet());
-      await act(async () => { await Promise.resolve(); });
-      await act(async () => { jest.advanceTimersByTime(2000); });
-
+      await tickPolling();
       expect(result.current.account?.address).toBe('G111');
 
-      // Simulate another tab broadcasting a newer account
       const incomingState: WalletSyncState = {
         account:   { address: 'GNEW', displayName: 'GN...EW' },
         network:   { network: 'Testnet', networkUrl: 'https://test', networkPassphrase: 'Test SDF Network ; September 2015' },
         isAllowed: true,
         timestamp: Date.now() + 1000,
         tabId:     'tab-other',
-        version:   9999, // definitely newer
+        version:   9999,
       };
 
       await act(async () => {
@@ -253,25 +234,22 @@ describe('useWallet', () => {
       setMockPublicKey('G111');
 
       const { result } = renderHook(() => useWallet());
-      await act(async () => { await Promise.resolve(); });
-      await act(async () => { jest.advanceTimersByTime(2000); });
+      await tickPolling();
+      expect(result.current.account?.address).toBe('G111');
 
-      // Poll has now run at least once; lastStateRef.current has been populated
-      // by the broadcastState call inside sync(). We make the incoming version lower.
       const staleState: WalletSyncState = {
         account:   { address: 'GSTALE', displayName: 'GS...LE' },
         network:   null,
         isAllowed: false,
         timestamp: Date.now() - 10000,
         tabId:     'tab-other',
-        version:   0, // older than anything our hook has produced
+        version:   0,
       };
 
       await act(async () => {
         capturedOnStateReceived?.(staleState);
       });
 
-      // Account must NOT have changed — our local state is newer
       expect(result.current.account?.address).toBe('G111');
     });
 
@@ -280,9 +258,7 @@ describe('useWallet', () => {
       setMockPublicKey('G111');
 
       const { result } = renderHook(() => useWallet());
-      await act(async () => { await Promise.resolve(); });
-      await act(async () => { jest.advanceTimersByTime(2000); });
-
+      await tickPolling();
       expect(result.current.account?.address).toBe('G111');
 
       await act(async () => {
@@ -298,8 +274,7 @@ describe('useWallet', () => {
       setMockPublicKey('G111');
 
       const { result } = renderHook(() => useWallet());
-      await act(async () => { await Promise.resolve(); });
-      await act(async () => { jest.advanceTimersByTime(2000); });
+      await tickPolling();
 
       act(() => { result.current.disconnect(); });
 
@@ -311,16 +286,13 @@ describe('useWallet', () => {
       setMockPublicKey('GORIGINAL');
 
       const { result } = renderHook(() => useWallet());
-      await act(async () => { await Promise.resolve(); });
-      await act(async () => { jest.advanceTimersByTime(2000); });
-
+      await tickPolling();
       expect(result.current.account?.address).toBe('GORIGINAL');
-      mockBroadcastState.mockClear();
 
-      // Simulate Freighter account switch
+      mockBroadcastState.mockClear();
       setMockPublicKey('GCHANGED');
 
-      await act(async () => { jest.advanceTimersByTime(2000); });
+      await tickPolling();
 
       expect(result.current.account?.address).toBe('GCHANGED');
       expect(mockBroadcastState).toHaveBeenCalledWith(
