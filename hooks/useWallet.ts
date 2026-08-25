@@ -7,7 +7,7 @@ import {
   signTransaction as freighterSignTransaction,
 } from "@stellar/freighter-api";
 import { useWalletSync } from "./useWalletSync";
-import { isStateNewer } from "../utils/walletStorage";
+import { isStateNewer, isStateStale } from "../utils/walletStorage";
 import type { WalletSyncState } from "../types/wallet-sync";
 
 export interface AccountInfo {
@@ -28,7 +28,11 @@ export interface WalletState {
   network: NetworkInfo | null;
   /** Whether the app is currently listed as allowed in Freighter */
   isAllowed: boolean | null;
-  /** Whether a connect/disconnect action is in progress */
+  /**
+   * True while a connect/sync action is in progress (setAllowed pending or
+   * an immediate poll is running). Use to disable the connect button and
+   * show a loading indicator.
+   */
   isBusy: boolean;
   /** Most recent connection error message, if any */
   error: string | null;
@@ -73,6 +77,12 @@ export function useWallet(): WalletState {
   // Stable ref for broadcastState so sync's useCallback doesn't depend on it
   // directly (which would create a circular dependency: sync → broadcastState
   // → useWalletSync options → sync).
+  //
+  // Pattern: broadcastStateRef.current is reassigned on every render (below,
+  // after useWalletSync returns). Any pending broadcast lives inside the
+  // WalletSyncManager's debounce setTimeout — not inside this ref — so there
+  // is no risk of a missed broadcast if the component unmounts before the next
+  // render updates the ref.
   const broadcastStateRef = useRef<
     ((account: AccountInfo | null, network: NetworkInfo | null, isAllowed: boolean | null) => void)
   >(() => undefined);
@@ -228,15 +238,22 @@ export function useWallet(): WalletState {
 
   useEffect(() => {
     const persistedState = loadPersistedState();
-    if (persistedState && !disconnectedRef.current) {
+
+    // Ignore state that is older than 5 seconds. If the tab was closed for a
+    // long time another tab may have broadcast much fresher state in the
+    // meantime; applying a stale snapshot here would briefly win the conflict
+    // resolution check (higher version) before the fresh broadcast arrives.
+    // Skipping it lets the first poll resolve the correct state from Freighter
+    // directly instead.
+    if (persistedState && !isStateStale(persistedState, 5000) && !disconnectedRef.current) {
       setAccount(persistedState.account);
       setNetwork(persistedState.network);
       setIsAllowed(persistedState.isAllowed);
       lastStateRef.current = persistedState;
-
-      // Validate the persisted state is still live in Freighter
-      void sync();
     }
+
+    // Always validate against Freighter on mount regardless of persisted state.
+    void sync();
     // sync is intentionally omitted: we only want this to run once on mount.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

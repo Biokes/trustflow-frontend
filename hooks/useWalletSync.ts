@@ -43,6 +43,15 @@ export interface UseWalletSyncResult {
  * Automatically subscribes to state updates from other tabs and provides
  * methods to broadcast local state changes.
  *
+ * Internally delegates to a singleton WalletSyncManager so multiple
+ * component instances that call this hook are safe — they each add a
+ * separate listener to the same underlying BroadcastChannel rather than
+ * opening duplicate channels. However, only one call site per application
+ * is needed for the sync to work; additional calls simply increase the
+ * listener count with no other side-effects. For large applications
+ * consider wrapping this in a React context/provider so the hook is
+ * called once at the root.
+ *
  * @param options - Configuration options
  * @returns Methods for broadcasting state and loading persisted data
  *
@@ -50,12 +59,10 @@ export interface UseWalletSyncResult {
  * ```tsx
  * const { broadcastState, loadPersistedState } = useWalletSync({
  *   onStateReceived: (state) => {
- *     // Update local wallet state from another tab
  *     setAccount(state.account)
  *     setNetwork(state.network)
  *   },
  *   onDisconnectReceived: () => {
- *     // Handle disconnect from another tab
  *     disconnect()
  *   }
  * })

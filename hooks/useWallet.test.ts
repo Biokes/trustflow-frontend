@@ -187,6 +187,7 @@ describe('useWallet', () => {
         account:   { address: 'GPERSISTED', displayName: 'GPER...TED' },
         network:   { network: 'Testnet', networkUrl: 'https://test', networkPassphrase: 'Test SDF Network ; September 2015' },
         isAllowed: true,
+        // Fresh timestamp — within the 5 s staleness window
         timestamp: Date.now(),
         tabId:     'tab-old',
         version:   10,
@@ -197,11 +198,35 @@ describe('useWallet', () => {
 
       const { result } = renderHook(() => useWallet());
 
-      // Mount effect fires synchronously; flush the resulting async sync()
       await tickPolling();
 
       expect(result.current.account?.address).toBe('GPERSISTED');
       expect(result.current.network?.networkPassphrase).toBe('Test SDF Network ; September 2015');
+    });
+
+    it('skips stale persisted state on mount and syncs from Freighter instead', async () => {
+      const stalePersistedState: WalletSyncState = {
+        account:   { address: 'GSTALE_PERSISTED', displayName: 'GST...ED' },
+        network:   { network: 'Testnet', networkUrl: 'https://test', networkPassphrase: 'Test SDF Network ; September 2015' },
+        isAllowed: true,
+        // Older than 5 s — should be ignored on mount
+        timestamp: Date.now() - 10000,
+        tabId:     'tab-old',
+        version:   5,
+      };
+      mockLoadPersistedState.mockReturnValue(stalePersistedState);
+
+      // Freighter has a different, current account
+      setMockConnected(true);
+      setMockPublicKey('GCURRENT');
+
+      const { result } = renderHook(() => useWallet());
+
+      await tickPolling();
+
+      // Stale persisted state must NOT have been applied — the live Freighter
+      // account should win
+      expect(result.current.account?.address).toBe('GCURRENT');
     });
 
     it('applies incoming state from another tab (newer version)', async () => {

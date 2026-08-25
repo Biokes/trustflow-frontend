@@ -95,8 +95,11 @@ export class WalletSyncManager {
     }
 
     this.storageListener = (event: StorageEvent) => {
-      // Only handle storage events for our wallet state key
-      if (event.key === `${this.config.storageKeyPrefix}-state`) {
+      // Only handle storage events for our broadcast channel key.
+      // This key is intentionally separate from the persistence key
+      // ('trustflow-wallet-state') used by walletStorage.ts to avoid
+      // broadcast messages overwriting persisted state.
+      if (event.key === `${this.config.storageKeyPrefix}-state:broadcast`) {
         if (event.newValue) {
           try {
             const message: WalletSyncMessage = JSON.parse(event.newValue)
@@ -104,8 +107,8 @@ export class WalletSyncManager {
             if (message.senderId !== this.tabId) {
               this.handleMessage(message)
             }
-          } catch (error) {
-            console.error('[WalletSyncManager] Failed to parse storage event:', error)
+          } catch {
+            // Silently ignore malformed messages
           }
         }
       }
@@ -126,24 +129,22 @@ export class WalletSyncManager {
     switch (message.type) {
       case WalletSyncMessageType.STATE_UPDATE:
         if (message.state) {
-          // Notify all listeners of the state update
           this.listeners.forEach((listener) => {
             try {
               listener(message.state!)
-            } catch (error) {
-              console.error('[WalletSyncManager] Listener error:', error)
+            } catch {
+              // Listener errors must not break other listeners
             }
           })
         }
         break
 
       case WalletSyncMessageType.DISCONNECT:
-        // Notify all disconnect listeners
         this.disconnectListeners.forEach((listener) => {
           try {
             listener()
-          } catch (error) {
-            console.error('[WalletSyncManager] Disconnect listener error:', error)
+          } catch {
+            // Listener errors must not break other listeners
           }
         })
         break
@@ -157,7 +158,8 @@ export class WalletSyncManager {
         break
 
       default:
-        console.warn('[WalletSyncManager] Unknown message type:', message)
+        // Unknown message type — ignore silently
+        break
     }
   }
 
@@ -170,7 +172,6 @@ export class WalletSyncManager {
    */
   broadcastState(state: WalletSyncState, immediate: boolean = false): void {
     if (!this.isInitialized) {
-      console.warn('[WalletSyncManager] Cannot broadcast: not initialized')
       return
     }
 
@@ -217,18 +218,19 @@ export class WalletSyncManager {
     if (this.channel) {
       try {
         this.channel.postMessage(message)
-      } catch (error) {
-        console.error('[WalletSyncManager] Failed to broadcast via channel:', error)
+      } catch {
+        // Silently ignore — the storage fallback will carry the message
       }
     }
 
-    // If using storage fallback, trigger storage event
+    // If using storage fallback, write to the broadcast-specific key so it
+    // does not collide with the persistence key used by walletStorage.ts.
     if (this.storageListener && isStorageAvailable()) {
       try {
-        const key = `${this.config.storageKeyPrefix}-state`
+        const key = `${this.config.storageKeyPrefix}-state:broadcast`
         localStorage.setItem(key, JSON.stringify(message))
-      } catch (error) {
-        console.error('[WalletSyncManager] Failed to broadcast via storage:', error)
+      } catch {
+        // Silently ignore storage errors during broadcast
       }
     }
   }
@@ -252,18 +254,18 @@ export class WalletSyncManager {
     if (this.channel) {
       try {
         this.channel.postMessage(message)
-      } catch (error) {
-        console.error('[WalletSyncManager] Failed to broadcast disconnect:', error)
+      } catch {
+        // Silently ignore channel errors
       }
     }
 
-    // Broadcast via storage fallback
+    // Broadcast via storage fallback using the broadcast-specific key.
     if (this.storageListener && isStorageAvailable()) {
       try {
-        const key = `${this.config.storageKeyPrefix}-state`
+        const key = `${this.config.storageKeyPrefix}-state:broadcast`
         localStorage.setItem(key, JSON.stringify(message))
-      } catch (error) {
-        console.error('[WalletSyncManager] Failed to broadcast disconnect via storage:', error)
+      } catch {
+        // Silently ignore storage errors during disconnect broadcast
       }
     }
   }

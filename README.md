@@ -209,7 +209,11 @@ Wallet state (account, network, allowed status) is synchronized across all open 
 
 **Fallback strategy:**
 
-`BroadcastChannel` is used where available (all modern browsers). In environments where it is unavailable or throws, the manager falls back to `localStorage` + `storage` events, which fire across tabs when a key changes.
+`BroadcastChannel` is used where available (all modern browsers). In environments where it is unavailable or throws, the manager falls back to `localStorage` + `storage` events, which fire across tabs when a key changes. The fallback writes to a dedicated key (`trustflow-wallet-state:broadcast`) that is separate from the persistence key (`trustflow-wallet-state`) to prevent broadcast messages from overwriting stored state.
+
+**Version counter:**
+
+Each state broadcast increments a version counter stored in `localStorage` under `trustflow-wallet-version`. This counter persists across page refreshes and browser restarts so that version numbers are always increasing across sessions — this is intentional and ensures that a freshly opened tab never mistakenly discards a broadcast from a tab that has been running longer.
 
 **No new runtime dependencies.** Everything uses native Web APIs (`BroadcastChannel`, `localStorage`, `crypto.randomUUID`).
 
