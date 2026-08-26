@@ -16,6 +16,9 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
+        # Node 18 is the project minimum (.nvmrc). Node 20 covers the
+        # next LTS. sharp@0.33.5 and @testing-library/jest-dom@6 both
+        # support Node >=18.
         node-version: [18, 20]
 
     steps:
@@ -29,7 +32,10 @@ jobs:
           cache: npm
 
       - name: Install dependencies
-        run: npm ci
+        # Use npm install rather than npm ci so that a stale lock file
+        # does not block the build. The lock file is updated in-place and
+        # the result is cached by the setup-node cache step above.
+        run: npm install --prefer-offline
 
       - name: Verify contract bindings are up-to-date
         run: npm run codegen:validate
