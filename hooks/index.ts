@@ -12,3 +12,4 @@ export * from "./useUserProfile";
 export * from './useDisputes';
 export * from './useDispute';
 export * from './useVoting';
+export * from './useOptimisticEscrow';
