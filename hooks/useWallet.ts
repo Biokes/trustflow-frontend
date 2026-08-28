@@ -87,22 +87,52 @@ export function useWallet(): WalletState {
     ((account: AccountInfo | null, network: NetworkInfo | null, isAllowed: boolean | null) => void)
   >(() => undefined);
 
+  // Mirrors of the state variables kept in refs so that sync() can read the
+  // latest values without closing over them as dependencies. This keeps sync
+  // referentially stable across renders and prevents the polling useEffect
+  // from re-running (and re-creating the setInterval) on every state update.
+  const accountRef = useRef<AccountInfo | null>(null);
+  const networkRef = useRef<NetworkInfo | null>(null);
+  const isAllowedRef = useRef<boolean | null>(null);
+
+  // ── Helpers to update both state and their mirror refs ───────
+
+  const setAccountAndRef = useCallback((value: AccountInfo | null) => {
+    accountRef.current = value;
+    setAccount(value);
+  }, []);
+
+  const setNetworkAndRef = useCallback((value: NetworkInfo | null) => {
+    networkRef.current = value;
+    setNetwork(value);
+  }, []);
+
+  const setIsAllowedAndRef = useCallback((value: boolean | null) => {
+    isAllowedRef.current = value;
+    setIsAllowed(value);
+  }, []);
+
   // ── Core sync logic ──────────────────────────────────────────
   // Declared first so it can be safely referenced by useWalletSync callbacks
   // and the mount effect below without any hoisting issues.
+  //
+  // Reads current state via refs so this function is referentially stable
+  // (empty dependency array). A stable sync means the polling useEffect never
+  // re-runs mid-test, keeping setInterval creation deterministic and
+  // preventing out-of-act() state updates that cause test timeouts.
 
   const sync = useCallback(async () => {
     if (disconnectedRef.current) {
-      setAccount(null);
+      setAccountAndRef(null);
       return;
     }
 
     try {
       const connected = await isConnected();
       if (!connected) {
-        setAccount(null);
-        setIsAllowed(false);
-        setNetwork(null);
+        setAccountAndRef(null);
+        setIsAllowedAndRef(false);
+        setNetworkAndRef(null);
         return;
       }
 
@@ -110,6 +140,11 @@ export function useWallet(): WalletState {
       let newAccount: AccountInfo | null = null;
       let newNetwork: NetworkInfo | null = null;
       let newIsAllowed: boolean | null = null;
+
+      // Read current values from refs (not closed-over state variables).
+      const currentAccount = accountRef.current;
+      const currentNetwork = networkRef.current;
+      const currentIsAllowed = isAllowedRef.current;
 
       // Fetch each piece independently so one failing call doesn't
       // prevent the others from updating the UI.
@@ -122,32 +157,32 @@ export function useWallet(): WalletState {
           };
 
           // Detect account change (silent reconnection scenario)
-          if (!account || account.address !== newAccount.address) {
+          if (!currentAccount || currentAccount.address !== newAccount.address) {
             stateChanged = true;
           }
 
-          setAccount(newAccount);
+          setAccountAndRef(newAccount);
         } else {
-          if (account !== null) {
+          if (currentAccount !== null) {
             stateChanged = true;
           }
-          setAccount(null);
+          setAccountAndRef(null);
         }
       } catch {
         // Keep previous account on transient failure
-        newAccount = account;
+        newAccount = currentAccount;
       }
 
       try {
         const allowed = await isAllowed();
-        if (isAllowedState !== allowed) {
+        if (currentIsAllowed !== allowed) {
           stateChanged = true;
         }
         newIsAllowed = allowed;
-        setIsAllowed(allowed);
+        setIsAllowedAndRef(allowed);
       } catch {
         // Keep previous allowed state
-        newIsAllowed = isAllowedState;
+        newIsAllowed = currentIsAllowed;
       }
 
       try {
@@ -160,16 +195,16 @@ export function useWallet(): WalletState {
           };
 
           // Detect network change
-          if (!network || network.networkPassphrase !== newNet.networkPassphrase) {
+          if (!currentNetwork || currentNetwork.networkPassphrase !== newNet.networkPassphrase) {
             stateChanged = true;
           }
 
           newNetwork = newNet;
-          setNetwork(newNet);
+          setNetworkAndRef(newNet);
         }
       } catch {
         // Keep previous network info
-        newNetwork = network;
+        newNetwork = currentNetwork;
       }
 
       // Broadcast changed state to other tabs, but not if we're currently
@@ -177,11 +212,25 @@ export function useWallet(): WalletState {
       if (stateChanged && !isProcessingSyncRef.current) {
         broadcastStateRef.current(newAccount, newNetwork, newIsAllowed);
       }
+
+      // After a successful Freighter poll, advance our own version counter so
+      // that stale broadcasts from other tabs (with a lower version) are
+      // correctly rejected by the isStateNewer guard in onStateReceived.
+      const prevVersion = lastStateRef.current?.version ?? 0;
+      lastStateRef.current = {
+        account: newAccount,
+        network: newNetwork,
+        isAllowed: newIsAllowed,
+        timestamp: Date.now(),
+        tabId: lastStateRef.current?.tabId ?? '',
+        version: prevVersion + 1,
+      };
     } catch {
       // Freighter may not be installed or may throw during polling;
       // silently ignore transient errors to avoid flickering the UI.
     }
-  }, [account, network, isAllowedState]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [setAccountAndRef, setNetworkAndRef, setIsAllowedAndRef]);
 
   // ── Cross-tab synchronization ────────────────────────────────
   // useWalletSync is called after sync is declared so its option callbacks
@@ -206,15 +255,10 @@ export function useWallet(): WalletState {
       isProcessingSyncRef.current = true;
 
       try {
-        setAccount(incomingState.account);
-        setNetwork(incomingState.network);
-        setIsAllowed(incomingState.isAllowed);
+        setAccountAndRef(incomingState.account);
+        setNetworkAndRef(incomingState.network);
+        setIsAllowedAndRef(incomingState.isAllowed);
         lastStateRef.current = incomingState;
-
-        // Silently validate the incoming account is still accessible
-        if (incomingState.account) {
-          void sync();
-        }
       } finally {
         isProcessingSyncRef.current = false;
       }
@@ -222,9 +266,9 @@ export function useWallet(): WalletState {
     onDisconnectReceived: () => {
       if (!disconnectedRef.current) {
         disconnectedRef.current = true;
-        setAccount(null);
-        setNetwork(null);
-        setIsAllowed(false);
+        setAccountAndRef(null);
+        setNetworkAndRef(null);
+        setIsAllowedAndRef(false);
         setError(null);
       }
     },
@@ -246,9 +290,9 @@ export function useWallet(): WalletState {
     // Skipping it lets the first poll resolve the correct state from Freighter
     // directly instead.
     if (persistedState && !isStateStale(persistedState, 5000) && !disconnectedRef.current) {
-      setAccount(persistedState.account);
-      setNetwork(persistedState.network);
-      setIsAllowed(persistedState.isAllowed);
+      setAccountAndRef(persistedState.account);
+      setNetworkAndRef(persistedState.network);
+      setIsAllowedAndRef(persistedState.isAllowed);
       lastStateRef.current = persistedState;
     }
 
@@ -289,14 +333,14 @@ export function useWallet(): WalletState {
 
   const disconnect = useCallback(() => {
     disconnectedRef.current = true;
-    setAccount(null);
-    setNetwork(null);
-    setIsAllowed(false);
+    setAccountAndRef(null);
+    setNetworkAndRef(null);
+    setIsAllowedAndRef(false);
     setError(null);
 
     // Immediately notify all other tabs
     broadcastDisconnect();
-  }, [broadcastDisconnect]);
+  }, [broadcastDisconnect, setAccountAndRef, setNetworkAndRef, setIsAllowedAndRef]);
 
   const signTransaction = useCallback(
     async (xdr: string): Promise<string> => {
