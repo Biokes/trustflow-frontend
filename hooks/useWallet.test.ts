@@ -49,7 +49,7 @@ jest.mock('./useWalletSync', () => ({
  */
 async function tickPolling() {
   await act(async () => {
-    await jest.runAllTimersAsync();
+    await jest.advanceTimersByTimeAsync(2000);
   });
 }
 
@@ -73,7 +73,7 @@ describe('useWallet', () => {
   });
 
   it('should initialize with null state if disconnected', async () => {
-    const { result } = renderHook(() => useWallet());
+    const { result } = renderHook(() => useWallet()); console.log('result:', result);
 
     await tickPolling();
 
@@ -92,7 +92,7 @@ describe('useWallet', () => {
       networkPassphrase: 'Test SDF Network ; September 2015',
     });
 
-    const { result } = renderHook(() => useWallet());
+    const { result } = renderHook(() => useWallet()); console.log('result:', result);
 
     await tickPolling();
 
@@ -105,7 +105,7 @@ describe('useWallet', () => {
   });
 
   it('should handle connect action', async () => {
-    const { result } = renderHook(() => useWallet());
+    const { result } = renderHook(() => useWallet()); console.log('result:', result);
 
     setMockConnected(true);
     setMockAllowed(true);
@@ -123,7 +123,7 @@ describe('useWallet', () => {
     setMockConnected(true);
     setMockPublicKey('GABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890');
 
-    const { result } = renderHook(() => useWallet());
+    const { result } = renderHook(() => useWallet()); console.log('result:', result);
 
     await tickPolling();
 
@@ -143,7 +143,7 @@ describe('useWallet', () => {
     setMockConnected(true);
     setMockPublicKey('G111');
 
-    const { result } = renderHook(() => useWallet());
+    const { result } = renderHook(() => useWallet()); console.log('result:', result);
 
     await tickPolling();
     expect(result.current.account?.address).toBe('G111');
@@ -158,7 +158,7 @@ describe('useWallet', () => {
     setMockConnected(true);
     setMockPublicKey('G111');
 
-    const { result } = renderHook(() => useWallet());
+    const { result } = renderHook(() => useWallet()); console.log('result:', result);
 
     await tickPolling();
     expect(result.current.account?.address).toBe('G111');
@@ -172,7 +172,7 @@ describe('useWallet', () => {
   });
 
   it('should throw when signing transaction without an account', async () => {
-    const { result } = renderHook(() => useWallet());
+    const { result } = renderHook(() => useWallet()); console.log('result:', result);
 
     await expect(result.current.signTransaction('unsigned-xdr')).rejects.toThrow(
       'Connect a wallet before signing a transaction'
@@ -196,7 +196,7 @@ describe('useWallet', () => {
       setMockConnected(true);
       setMockPublicKey('GPERSISTED');
 
-      const { result } = renderHook(() => useWallet());
+      const { result } = renderHook(() => useWallet()); console.log('result:', result);
 
       await tickPolling();
 
@@ -220,7 +220,7 @@ describe('useWallet', () => {
       setMockConnected(true);
       setMockPublicKey('GCURRENT');
 
-      const { result } = renderHook(() => useWallet());
+      const { result } = renderHook(() => useWallet()); console.log('result:', result);
 
       await tickPolling();
 
@@ -233,7 +233,7 @@ describe('useWallet', () => {
       setMockConnected(true);
       setMockPublicKey('G111');
 
-      const { result } = renderHook(() => useWallet());
+      const { result } = renderHook(() => useWallet()); console.log('result:', result);
       await tickPolling();
       expect(result.current.account?.address).toBe('G111');
 
@@ -258,7 +258,7 @@ describe('useWallet', () => {
       setMockConnected(true);
       setMockPublicKey('G111');
 
-      const { result } = renderHook(() => useWallet());
+      const { result } = renderHook(() => useWallet()); console.log('result:', result);
       await tickPolling();
       expect(result.current.account?.address).toBe('G111');
 
@@ -282,7 +282,7 @@ describe('useWallet', () => {
       setMockConnected(true);
       setMockPublicKey('G111');
 
-      const { result } = renderHook(() => useWallet());
+      const { result } = renderHook(() => useWallet()); console.log('result:', result);
       await tickPolling();
       expect(result.current.account?.address).toBe('G111');
 
@@ -298,7 +298,7 @@ describe('useWallet', () => {
       setMockConnected(true);
       setMockPublicKey('G111');
 
-      const { result } = renderHook(() => useWallet());
+      const { result } = renderHook(() => useWallet()); console.log('result:', result);
       await tickPolling();
 
       act(() => { result.current.disconnect(); });
@@ -310,7 +310,7 @@ describe('useWallet', () => {
       setMockConnected(true);
       setMockPublicKey('GORIGINAL');
 
-      const { result } = renderHook(() => useWallet());
+      const { result } = renderHook(() => useWallet()); console.log('result:', result);
       await tickPolling();
       expect(result.current.account?.address).toBe('GORIGINAL');
 
