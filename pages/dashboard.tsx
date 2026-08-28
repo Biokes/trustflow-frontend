@@ -1,11 +1,21 @@
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 import type { NextPage } from 'next'
 import Head from 'next/head'
 import Link from 'next/link'
 import { Navbar } from '../components/organisms'
-import { USDCConverter, FileUpload, DeliverableViewer, DashboardSidebar } from '../components/molecules'
-import type { UploadedFile, DeliverableFile } from '../components/molecules'
+import { USDCConverter, FileUpload, DeliverableViewer, DashboardSidebar, EscrowMilestoneTracker } from '../components/molecules'
+import type { UploadedFile, DeliverableFile, TrackerMilestone } from '../components/molecules'
 import { useUSDCPrice, formatUSD, convertToUSD } from '../hooks/useUSDCPrice'
+import type { MilestoneStatus } from '../shared/contracts-gen/escrow'
+import type { RollbackEvent } from '../shared/optimistic/types'
+import {
+  applyOptimisticUpdate,
+  confirmUpdate,
+  rollbackUpdate,
+  getOptimisticState,
+  getEffectiveStatus,
+} from '../shared/optimistic/escrow-state'
+import type { MilestoneKey } from '../shared/optimistic/types'
 
 interface NavItem {
   label: string
@@ -53,9 +63,22 @@ const SAMPLE_DELIVERABLES: DeliverableFile[] = [
   },
 ]
 
+// ── Demo Milestones ────────────────────────────────────────────
+
+const DEMO_GIG_ID = '00000000deadbeef'
+
+const INITIAL_MILESTONES: TrackerMilestone[] = [
+  { index: 0, label: 'Design Mockups', amount: '500', token: 'USDC', status: 'Funded' },
+  { index: 1, label: 'Frontend Implementation', amount: '1200', token: 'USDC', status: 'Funded' },
+  { index: 2, label: 'Smart Contract Audit', amount: '800', token: 'USDC', status: 'Pending' },
+  { index: 3, label: 'Deployment & QA', amount: '500', token: 'USDC', status: 'Pending' },
+]
+
 const Dashboard: NextPage = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const { price: usdcPrice, status: priceStatus } = useUSDCPrice()
+  const [lastRollback, setLastRollback] = useState<RollbackEvent | null>(null)
+  const [milestones] = useState<TrackerMilestone[]>(INITIAL_MILESTONES)
 
   const escrowUSD =
     usdcPrice !== null ? formatUSD(convertToUSD(ESCROW_USDC, usdcPrice)) : null
@@ -68,6 +91,94 @@ const Dashboard: NextPage = () => {
   function handleUploadError(entry: UploadedFile) {
     console.error('IPFS pin failed for', entry.file.name, entry.error)
   }
+
+  // ── Optimistic tracker helpers ────────────────────────────
+
+  const getEffective = useCallback(
+    (milestoneIndex: number): MilestoneStatus => {
+      const key: MilestoneKey = { gigId: DEMO_GIG_ID, milestoneIndex }
+      const ms = milestones.find((m) => m.index === milestoneIndex)
+      return getEffectiveStatus(key, ms?.status ?? 'Pending')
+    },
+    [milestones],
+  )
+
+  const checkOptimistic = useCallback(
+    (milestoneIndex: number): boolean => {
+      const key: MilestoneKey = { gigId: DEMO_GIG_ID, milestoneIndex }
+      return getOptimisticState(key)?.isOptimistic ?? false
+    },
+    [],
+  )
+
+  /**
+   * Simulate an optimistic escrow action. Applies the optimistic update
+   * immediately, then after a short delay simulates the on-chain confirmation
+   * (or a random rollback for demo purposes).
+   */
+  const simulateAction = useCallback(
+    (milestoneIndex: number, currentStatus: MilestoneStatus, nextStatus: MilestoneStatus) => {
+      const key: MilestoneKey = { gigId: DEMO_GIG_ID, milestoneIndex }
+
+      try {
+        applyOptimisticUpdate(key, currentStatus, nextStatus)
+      } catch (err) {
+        console.error('Invalid transition:', err)
+        return
+      }
+
+      // Simulate a 2-second on-chain confirmation (20% chance of failure for demo)
+      setTimeout(() => {
+        const shouldFail = Math.random() < 0.2
+        if (shouldFail) {
+          const reason = 'Simulated ledger failure: transaction rejected by network'
+          rollbackUpdate(key, reason)
+          setLastRollback({
+            key,
+            previousStatus: currentStatus,
+            attemptedStatus: nextStatus,
+            reason,
+            rolledBackAt: Date.now(),
+          })
+        } else {
+          confirmUpdate(key)
+        }
+      }, 2000)
+    },
+    [],
+  )
+
+  const handleFund = useCallback(
+    (milestoneIndex: number) => {
+      const ms = milestones.find((m) => m.index === milestoneIndex)
+      if (ms) simulateAction(milestoneIndex, ms.status, 'Funded')
+    },
+    [milestones, simulateAction],
+  )
+
+  const handleRelease = useCallback(
+    (milestoneIndex: number) => {
+      const ms = milestones.find((m) => m.index === milestoneIndex)
+      if (ms) simulateAction(milestoneIndex, ms.status, 'Released')
+    },
+    [milestones, simulateAction],
+  )
+
+  const handleDispute = useCallback(
+    (milestoneIndex: number) => {
+      const ms = milestones.find((m) => m.index === milestoneIndex)
+      if (ms) simulateAction(milestoneIndex, ms.status, 'Disputed')
+    },
+    [milestones, simulateAction],
+  )
+
+  const handleRefund = useCallback(
+    (milestoneIndex: number) => {
+      const ms = milestones.find((m) => m.index === milestoneIndex)
+      if (ms) simulateAction(milestoneIndex, ms.status, 'Refunded')
+    },
+    [milestones, simulateAction],
+  )
 
   return (
     <>
@@ -206,6 +317,30 @@ const Dashboard: NextPage = () => {
                 />
               </div>
             )}
+
+            {/* Escrow Milestone Tracker — optimistic UI demo */}
+            <div className="mb-8 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-6">
+              <div className="mb-4">
+                <h2 className="text-lg font-bold text-gray-900 dark:text-white">
+                  Escrow Milestones
+                </h2>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                  Track milestone progress with instant optimistic updates. Actions apply immediately
+                  and roll back automatically if the on-chain transaction fails.
+                </p>
+              </div>
+              <EscrowMilestoneTracker
+                gigId={DEMO_GIG_ID}
+                milestones={milestones}
+                getEffectiveStatus={getEffective}
+                isOptimistic={checkOptimistic}
+                onFund={handleFund}
+                onRelease={handleRelease}
+                onDispute={handleDispute}
+                onRefund={handleRefund}
+                lastRollback={lastRollback}
+              />
+            </div>
 
             {/* Empty state */}
             <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-12 text-center">

@@ -31,11 +31,16 @@ jobs:
           node-version: ${{ matrix.node-version }}
           cache: npm
 
+      - name: Cache npm dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: npm-${{ runner.os }}-node-${{ matrix.node-version }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            npm-${{ runner.os }}-node-${{ matrix.node-version }}-
+
       - name: Install dependencies
-        # Use npm install rather than npm ci so that a stale lock file
-        # does not block the build. The lock file is updated in-place and
-        # the result is cached by the setup-node cache step above.
-        run: npm install --prefer-offline
+        run: npm install
 
       - name: Verify contract bindings are up-to-date
         run: npm run codegen:validate

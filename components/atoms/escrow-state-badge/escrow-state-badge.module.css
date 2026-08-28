@@ -1,0 +1,142 @@
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.025em;
+  text-transform: uppercase;
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+/* ── Status Colors ──────────────────────────────────────────── */
+
+.Pending {
+  background-color: rgb(243 244 246);
+  color: rgb(75 85 99);
+}
+
+.Funded {
+  background-color: rgb(219 234 254);
+  color: rgb(29 78 216);
+}
+
+.Completed {
+  background-color: rgb(220 252 231);
+  color: rgb(21 128 61);
+}
+
+.Released {
+  background-color: rgb(187 247 208);
+  color: rgb(22 101 52);
+}
+
+.Disputed {
+  background-color: rgb(254 226 226);
+  color: rgb(185 28 28);
+}
+
+.Refunded {
+  background-color: rgb(254 243 199);
+  color: rgb(146 64 14);
+}
+
+/* ── Dark Mode ──────────────────────────────────────────────── */
+
+:global(.dark) .Pending {
+  background-color: rgb(31 41 55);
+  color: rgb(156 163 175);
+}
+
+:global(.dark) .Funded {
+  background-color: rgb(30 58 138 / 0.3);
+  color: rgb(147 197 253);
+}
+
+:global(.dark) .Completed {
+  background-color: rgb(20 83 45 / 0.3);
+  color: rgb(134 239 172);
+}
+
+:global(.dark) .Released {
+  background-color: rgb(20 83 45 / 0.3);
+  color: rgb(74 222 128);
+}
+
+:global(.dark) .Disputed {
+  background-color: rgb(127 29 29 / 0.3);
+  color: rgb(252 165 165);
+}
+
+:global(.dark) .Refunded {
+  background-color: rgb(120 53 15 / 0.3);
+  color: rgb(253 224 71);
+}
+
+/* ── Optimistic Pulse ───────────────────────────────────────── */
+
+.optimistic {
+  animation: optimisticPulse 1.5s ease-in-out infinite;
+}
+
+@keyframes optimisticPulse {
+  0%, 100% {
+    opacity: 1;
+    box-shadow: 0 0 0 0 currentColor;
+  }
+  50% {
+    opacity: 0.75;
+    box-shadow: 0 0 0 4px transparent;
+  }
+}
+
+/* ── Pulse Dot ──────────────────────────────────────────────── */
+
+.pulseDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: currentColor;
+  animation: dotPulse 1.5s ease-in-out infinite;
+}
+
+@keyframes dotPulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.4;
+    transform: scale(1.4);
+  }
+}
+
+/* ── Rollback Flash ─────────────────────────────────────────── */
+
+.rollbackFlash {
+  animation: rollbackShake 0.5s ease-in-out;
+}
+
+@keyframes rollbackShake {
+  0%, 100% {
+    transform: translateX(0);
+    background-color: rgb(254 226 226);
+    color: rgb(185 28 28);
+  }
+  20% {
+    transform: translateX(-3px);
+  }
+  40% {
+    transform: translateX(3px);
+  }
+  60% {
+    transform: translateX(-2px);
+  }
+  80% {
+    transform: translateX(2px);
+  }
+}
